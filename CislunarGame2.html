@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cislunar Dynamics Game</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#000;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  height:100vh;
+  font-family:'Courier New',monospace;
+  color:#00ffcc;
+  overflow:hidden;
+}
+#gameWrapper {
+  display:flex;
+  gap:12px;
+  align-items:center;
+  justify-content:center;
+}
+canvas {
+  border:1px solid #1a3a6a;
+  display:block;
+  background:#000018;
+}
+#hud {
+  width:215px;
+  background:#050f1f;
+  border:1px solid #1a3a6a;
+  border-radius:4px;
+  padding:12px;
+  font-size:11px;
+  line-height:1.9;
+  align-self:stretch;
+  display:flex;
+  flex-direction:column;
+}
+#hud b { color:#4488ff; display:block; margin-bottom:2px; }.row { display:flex; justify-content:space-between; }.lbl { color:#557799; }.val { color:#00ffcc; font-weight:bold; }.val.warn   { color:#ffaa00; }.val.danger { color:#ff4444; }.bar-outer {
+  width:100%; height:8px;
+  background:#0a1a2a; border-radius:4px;
+  margin:2px 0 6px; overflow:hidden;
+}.bar-inner { height:100%; border-radius:4px; transition:width 0.1s; }
+#keyGrid {
+  display:grid;
+  grid-template-columns:repeat(3,26px);
+  gap:3px;
+  margin:3px auto 6px;
+  width:fit-content;
+}.k {
+  width:26px; height:26px;
+  border:1px solid #1a3a6a; border-radius:3px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:#223344; background:#050f1a;
+}.k.on { background:#003366; color:#00ffcc; border-color:#00ffcc; }
+#status {
+  font-size:11px; font-weight:bold;
+  text-align:center; padding:3px;
+  border-radius:3px; margin-top:3px;
+  background:#050f1a; color:#557799;
+}
+#zoneWarn {
+  font-size:11px; font-weight:bold;
+  text-align:center; padding:3px;
+  border-radius:3px; margin-top:3px;
+  background:#1a0000; color:#ff4444;
+  border:1px solid #ff4444;
+  display:none;
+}
+#scoreDisplay {
+  font-size:13px; font-weight:bold;
+  text-align:center; padding:4px;
+  border-radius:3px; margin-top:4px;
+  background:#050f1a; color:#ffdd00;
+  border:1px solid #334400;
+}
+#msgBox {
+  display:none; margin-top:6px; padding:8px;
+  border-radius:3px; font-size:11px;
+  font-weight:bold; text-align:center; line-height:1.7;
+}
+#retryBtn {
+  display:none; width:100%; margin-top:6px; padding:7px;
+  background:#002244; color:#00ffcc;
+  border:1px solid #00ffcc; border-radius:3px;
+  font-family:'Courier New',monospace; font-size:12px;
+  font-weight:bold; cursor:pointer; letter-spacing:1px;
+}
+#retryBtn:hover { background:#004488; }
+#dlBtn {
+  display:none; width:100%; margin-top:4px; padding:7px;
+  background:#001a00; color:#44ff88;
+  border:1px solid #44ff88; border-radius:3px;
+  font-family:'Courier New',monospace; font-size:12px;
+  font-weight:bold; cursor:pointer; letter-spacing:1px;
+}
+#dlBtn:hover { background:#003300; }
+#hint {
+  margin-top:auto; padding:5px;
+  border:1px solid #1a3a6a; border-radius:3px;
+  font-size:9px; color:#446688; line-height:1.6;
+}
+
+/* ── Welcome overlay ── */
+#welcome {
+  position:fixed; top:0; left:0; right:0; bottom:0;
+  background:rgba(0,0,16,0.97);
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  z-index:200;
+  font-family:'Courier New',monospace;
+}
+#welcome h1 {
+  font-size:22px; letter-spacing:4px;
+  color:#88aaff; margin-bottom:4px;
+}
+#welcome.sub {
+  font-size:11px; color:#446688;
+  letter-spacing:2px; margin-bottom:24px;
+}.diff-card {
+  width:400px; margin:5px 0; padding:12px 18px;
+  border:1px solid #1a3a6a; border-radius:6px;
+  background:#050f1f; cursor:pointer;
+  transition:all 0.15s;
+  display:flex; flex-direction:column; gap:3px;
+}.diff-card:hover:not(.disabled) { border-color:#00ffcc; background:#001a2a; }.diff-card.disabled {
+  opacity:0.35; cursor:not-allowed; border-color:#1a2a3a;
+}.diff-title { font-size:14px; font-weight:bold; letter-spacing:2px; }.diff-desc  { font-size:10px; color:#557799; line-height:1.6; }.diff-easy.diff-title { color:#00ffcc; }.diff-moderate.diff-title { color:#ffaa00; }.diff-hard.diff-title { color:#ff6644; }.diff-vhard.diff-title { color:#ff44aa; }.coming { font-size:9px; color:#445566; margin-top:2px; }
+</style>
+</head>
+<body>
+
+<div id="gameWrapper">
+  <canvas id="c" width="800" height="620"></canvas>
+  <div id="hud">
+    <b>🛰 MISSION HUD</b>
+    <div class="row"><span class="lbl">Difficulty</span>
+      <span class="val" id="hDiff" style="color:#ffaa00">—</span></div>
+    <div class="row"><span class="lbl">Time (nd)</span>
+      <span class="val" id="hTime">0.000</span></div>
+    <div class="row"><span class="lbl">Speed</span>
+      <span class="val" id="hSpd">0.000</span></div>
+    <div class="row"><span class="lbl">Jacobi C</span>
+      <span class="val" id="hJac">—</span></div>
+    <div class="row"><span class="lbl">Pos (x,y)</span>
+      <span class="val" id="hPos" style="font-size:10px">—</span></div>
+
+    <div style="margin-top:4px;color:#557799;font-size:10px;">⛽ Fuel</div>
+    <div class="bar-outer">
+      <div class="bar-inner" id="fBar"
+        style="width:100%;background:linear-gradient(90deg,#00ffcc,#0088ff)"></div>
+    </div>
+    <div class="row"><span class="lbl">Remaining</span>
+      <span class="val" id="hFuel">100%</span></div>
+
+    <div style="margin-top:4px;color:#557799;font-size:10px;">🎯 Target</div>
+    <div class="row"><span class="lbl">Distance</span>
+      <span class="val" id="hDist">—</span></div>
+    <div class="bar-outer">
+      <div class="bar-inner" id="dBar"
+        style="width:0%;background:linear-gradient(90deg,#ff4444,#ffaa00,#00ffcc)"></div>
+    </div>
+    <div class="row"><span class="lbl">Direction</span>
+      <span class="val" id="hDir">—</span></div>
+    <div class="row"><span class="lbl">Thrust</span>
+      <span class="val" id="hThr" style="color:#ffdd00">[0,0]</span></div>
+
+    <div style="margin-top:4px;color:#557799;font-size:10px;">⌨ Keys</div>
+    <div id="keyGrid">
+      <div></div><div class="k" id="kU">↑</div><div></div>
+      <div class="k" id="kL">←</div>
+      <div class="k" id="kD">↓</div>
+      <div class="k" id="kR">→</div>
+    </div>
+
+    <div id="status">COASTING</div>
+    <div id="zoneWarn">⚠ SURVEILLANCE DETECTED</div>
+    <div id="scoreDisplay">SCORE: —</div>
+
+    <div id="msgBox"></div>
+    <button id="retryBtn" onclick="showWelcome()">↺ PLAY AGAIN</button>
+    <button id="dlBtn"    onclick="downloadLog()">⬇ DOWNLOAD LOG</button>
+
+    <div id="hint">
+      ↑↓←→ Thrust  |  R = Menu<br>
+      Reach the red ✕ before fuel runs out.<br>
+      Hard/VH: avoid surveillance zones.
+    </div>
+  </div>
+</div>
+
+<!-- Welcome screen -->
+<div id="welcome">
+  <h1>⬡ CISLUNAR DYNAMICS</h1>
+  <div class="sub">CR3BP ROTATING FRAME — SELECT DIFFICULTY</div>
+
+  <div class="diff-card diff-easy" onclick="startDifficulty('easy')">
+    <div class="diff-title">EASY</div>
+    <div class="diff-desc">
+      Static target, randomly placed near the Moon each retry.<br>
+      Score = fuel remaining.
+    </div>
+  </div>
+
+  <div class="diff-card diff-moderate" onclick="startDifficulty('moderate')">
+    <div class="diff-title">MODERATE</div>
+    <div class="diff-desc">
+      Target moves along a large elliptical orbit between L1 and L2.<br>
+      Score = fuel remaining + time bonus.
+    </div>
+  </div>
+
+  <div class="diff-card diff-hard" onclick="startDifficulty('hard')">
+    <div class="diff-title">HARD</div>
+    <div class="diff-desc">
+      Moving target + static randomized surveillance exclusion zones.<br>
+      Score = fuel − zone penalty. Avoid detection!
+    </div>
+  </div>
+
+  <div class="diff-card diff-vhard" onclick="startDifficulty('vhard')">
+    <div class="diff-title">VERY HARD</div>
+    <div class="diff-desc">
+      Moving target + moving surveillance zones that drift and rotate.<br>
+      Zones change speed and direction. Maximum evasion required.
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════
+const MU              = 0.0121505;
+const THRUST_MAG      = 5.0;
+const FUEL_MAX        = 100.0;
+const FUEL_RATE       = 1.0;
+const WIN_R           = 0.045;
+const EARTH_R         = 0.05;
+const MOON_R          = 0.013;
+const DT_GAME         = 0.005;
+const TICK_HZ         = 20;
+const ARROW_ND        = 0.08;
+const ZONE_PENALTY    = 3.0;   // score pts per nd time in zone
+const STAR_ROT_RATE = -0.16;   // radians per nd time (tune 0.05–0.12)
+
+const EX=-MU, EY=0, MX=1-MU, MY=0;
+const L1x=1-MU-0.1512, L2x=1-MU+0.1679;
+
+// ═══════════════════════════════════════════════════
+//  CANVAS  — wider to show L2 and beyond
+// ═══════════════════════════════════════════════════
+const canvas=document.getElementById('c');
+const ctx=canvas.getContext('2d');
+const W=canvas.width, H=canvas.height;
+
+// Scale and origin chosen so x in [-0.55, 1.45] fits in W px
+// x range = 2.0 nd  →  SCALE = W/2.0 but we want margin
+const SCALE = 310;
+const OX = W * 0.30;   // barycenter at 30% from left — gives room right of L2
+const OY = H * 0.50;
+
+function toP(x,y){ return [OX+x*SCALE, OY-y*SCALE]; }
+
+// ═══════════════════════════════════════════════════
+//  STARS
+// ═══════════════════════════════════════════════════
+const STARS=Array.from({length:240},()=>[
+  Math.random()*W, Math.random()*H,
+  Math.random()*1.2+0.2, Math.random()*0.6+0.2
+]);
+
+
+// ═══════════════════════════════════════════════════
+//  GAME GLOBALS
+// ═══════════════════════════════════════════════════
+let difficulty='easy';
+let S={}, trail=[], keys={}, phase='play', tickInterval=null;
+let TX=0, TY=0;
+let orbitTable=[], orbitPeriod=0;
+let exclusionZones=[];
+let allPlays=[], currentPlay=null, playCount=0;
+
+// ═══════════════════════════════════════════════════
+//  PHYSICS
+// ═══════════════════════════════════════════════════
+function cr3bp(x,y,vx,vy,tx,ty){
+  const d1x=x+MU, d2x=x-(1-MU);
+  const r1=Math.max(Math.sqrt(d1x*d1x+y*y),0.015);
+  const r2=Math.max(Math.sqrt(d2x*d2x+y*y),0.015);
+  const r13=r1*r1*r1, r23=r2*r2*r2;
+  return [vx,vy,
+     2*vy+x-(1-MU)*d1x/r13-MU*d2x/r23+tx,
+    -2*vx+y-(1-MU)*y  /r13-MU*y  /r23+ty];
+}
+
+function rk4(x,y,vx,vy,tx,ty,h){
+  const [a1,b1,c1,d1]=cr3bp(x,y,vx,vy,tx,ty);
+  const [a2,b2,c2,d2]=cr3bp(x+.5*h*a1,y+.5*h*b1,vx+.5*h*c1,vy+.5*h*d1,tx,ty);
+  const [a3,b3,c3,d3]=cr3bp(x+.5*h*a2,y+.5*h*b2,vx+.5*h*c2,vy+.5*h*d2,tx,ty);
+  const [a4,b4,c4,d4]=cr3bp(x+h*a3,   y+h*b3,   vx+h*c3,   vy+h*d3,   tx,ty);
+  return [
+    x +h/6*(a1+2*a2+2*a3+a4),
+    y +h/6*(b1+2*b2+2*b3+b4),
+    vx+h/6*(c1+2*c2+2*c3+c4),
+    vy+h/6*(d1+2*d2+2*d3+d4)
+  ];
+}
+
+function jacobi(x,y,vx,vy){
+  const d1x=x+MU, d2x=x-(1-MU);
+  const r1=Math.max(Math.sqrt(d1x*d1x+y*y),1e-9);
+  const r2=Math.max(Math.sqrt(d2x*d2x+y*y),1e-9);
+  return 2*(0.5*(x*x+y*y)+(1-MU)/r1+MU/r2)-(vx*vx+vy*vy);
+}
+
+// ═══════════════════════════════════════════════════
+//  ORBIT TABLE
+// ═══════════════════════════════════════════════════
+function buildOrbitTable(){
+  const usesL2=Math.random()<0.5;
+  const xc=usesL2 ? L2x : L1x;
+  const yc=(Math.random()-0.5)*0.05;
+
+  // Axes sized to be 60-75% of visible canvas half-width
+  // canvas half-width in nd = (W - OX)/SCALE ≈ (560)/310 ≈ 1.8 nd
+  // 65% of 0.9 (half) ≈ 0.58 — use Ax~0.25, Ay~0.35 for nice ellipse
+  const Ax=0.22+Math.random()*0.10;
+  const Ay=0.28+Math.random()*0.14;
+  const T =(3.5+Math.random()*2.0)*2.5;
+
+  orbitPeriod=T;
+  orbitTable=[];
+  const N=2000;
+  for(let i=0;i<N;i++){
+    const theta=(2*Math.PI*i)/N;
+    orbitTable.push([
+      xc+Ax*Math.cos(theta),
+      yc+Ay*Math.sin(theta)
+    ]);
+  }
+}
+
+function getTargetPos(t){
+  if(difficulty==='easy') return [TX,TY];
+  const frac=((t%orbitPeriod)+orbitPeriod)%orbitPeriod/orbitPeriod;
+  const idx=Math.floor(frac*orbitTable.length)%orbitTable.length;
+  return orbitTable[idx];
+}
+
+// ═══════════════════════════════════════════════════
+//  EXCLUSION ZONES
+// ═══════════════════════════════════════════════════
+function buildExclusionZones(){
+  exclusionZones=[];
+  const n=2+Math.floor(Math.random()*3);
+  let attempts=0;
+  while(exclusionZones.length<n && attempts<300){
+    attempts++;
+    const cx=-MU+0.15+Math.random()*(MX-(-MU+0.15)-0.15);
+    const cy=(Math.random()-0.5)*0.80;
+    const rx=0.05+Math.random()*0.07;
+    const ry=0.04+Math.random()*0.06;
+    const dE=Math.sqrt((cx-EX)**2+cy**2);
+    const dM=Math.sqrt((cx-MX)**2+cy**2);
+    if(dE<EARTH_R+rx+0.06) continue;
+    if(dM<MOON_R+rx+0.06)  continue;
+    let overlap=false;
+    for(const z of exclusionZones){
+      if(Math.sqrt((cx-z.cx)**2+(cy-z.cy)**2)<rx+z.rx+0.07){overlap=true;break;}
+    }
+    if(overlap) continue;
+
+    // Very Hard: each zone gets a drift velocity and rotation rate
+    const isVH=(difficulty==='vhard');
+    exclusionZones.push({
+      cx, cy, rx, ry,
+      // base position for VH drift
+      cx0:cx, cy0:cy,
+      // drift: slow sinusoidal wander
+      driftAx: isVH ? (Math.random()-0.5)*0.15 : 0,
+      driftAy: isVH ? (Math.random()-0.5)*0.15 : 0,
+      driftFx: isVH ? 0.3+Math.random()*0.4    : 0,
+      driftFy: isVH ? 0.3+Math.random()*0.4    : 0,
+      driftPx: isVH ? Math.random()*Math.PI*2  : 0,
+      driftPy: isVH ? Math.random()*Math.PI*2  : 0,
+      // rotation of ellipse axes
+      angle:   isVH ? Math.random()*Math.PI    : 0,
+      rotRate: isVH ? (Math.random()-0.5)*0.08 : 0,
+      inside:false
+    });
+  }
+}
+
+// Update zone positions for Very Hard
+function updateZones(t){
+  for(const z of exclusionZones){
+    z.cx = z.cx0 + z.driftAx*Math.sin(2*Math.PI*z.driftFx*t + z.driftPx);
+    z.cy = z.cy0 + z.driftAy*Math.sin(2*Math.PI*z.driftFy*t + z.driftPy);
+    z.angle += z.rotRate*DT_GAME;
+    // Keep zones from drifting into bodies
+    const dE=Math.sqrt((z.cx-EX)**2+z.cy**2);
+    const dM=Math.sqrt((z.cx-MX)**2+z.cy**2);
+    if(dE<EARTH_R+z.rx+0.04 || dM<MOON_R+z.rx+0.04){
+      // reverse drift phase
+      z.driftPx+=Math.PI; z.driftPy+=Math.PI;
+    }
+  }
+}
+
+function checkZones(x,y){
+  let anyInside=false;
+  for(const z of exclusionZones){
+    // Rotated ellipse check
+    const cosA=Math.cos(-z.angle), sinA=Math.sin(-z.angle);
+    const dx=x-z.cx, dy=y-z.cy;
+    const xr= dx*cosA - dy*sinA;
+    const yr= dx*sinA + dy*cosA;
+    z.inside=(xr/z.rx)**2+(yr/z.ry)**2<=1.0;
+    if(z.inside) anyInside=true;
+  }
+  return anyInside;
+}
+
+// ═══════════════════════════════════════════════════
+//  SCORE
+// ═══════════════════════════════════════════════════
+function computeScore(){
+  const fp=S.fuel/FUEL_MAX*100;
+  if(difficulty==='easy')     return fp;
+  if(difficulty==='moderate') return fp+Math.max(0,50-S.t*2);
+  // hard / vhard
+  return fp - ZONE_PENALTY*S.time_in_zone;
+}
+
+// ═══════════════════════════════════════════════════
+//  INIT STATE
+// ═══════════════════════════════════════════════════
+function initState(){
+  const R0=0.13, x0=EX+R0;
+  const vy0=Math.sqrt((1-MU)/R0)-x0;
+  return {x:x0,y:0,vx:0,vy:vy0,
+    fuel:FUEL_MAX,t:0,tx:0,ty:0,
+    time_in_zone:0,score:0};
+}
+
+function newTarget(){
+  if(difficulty==='easy'){
+    TX=MX-0.05-0.1*Math.random();
+    TY=(Math.random()-0.5)*1.0;
+    TY=Math.max(-0.58,Math.min(0.58,TY));
+  } else {
+    buildOrbitTable();
+    const p=getTargetPos(0);
+    TX=p[0]; TY=p[1];
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  WELCOME / DIFFICULTY
+// ═══════════════════════════════════════════════════
+function showWelcome(){
+  clearInterval(tickInterval);
+  document.getElementById('msgBox').style.display='none';
+  document.getElementById('retryBtn').style.display='none';
+  document.getElementById('welcome').style.display='flex';
+}
+
+function startDifficulty(diff){
+  difficulty=diff;
+  document.getElementById('welcome').style.display='none';
+  doStart();
+}
+
+// ═══════════════════════════════════════════════════
+//  START
+// ═══════════════════════════════════════════════════
+function doStart(){
+  clearInterval(tickInterval);
+  newTarget();
+  if(difficulty==='hard'||difficulty==='vhard') buildExclusionZones();
+  else exclusionZones=[];
+  S=initState(); trail=[]; keys={}; phase='play';
+  playCount++;
+  currentPlay={play:playCount,difficulty,result:'—',ticks:[]};
+  document.getElementById('msgBox').style.display='none';
+  document.getElementById('retryBtn').style.display='none';
+  document.getElementById('zoneWarn').style.display='none';
+  document.getElementById('hDiff').textContent=diff2label(difficulty);
+  document.getElementById('hDiff').style.color=diff2color(difficulty);
+  document.getElementById('scoreDisplay').textContent='SCORE: 0.0';
+  document.getElementById('scoreDisplay').style.color='#ffdd00';
+  tickInterval=setInterval(gameTick,1000/TICK_HZ);
+}
+
+function diff2label(d){
+  return {easy:'EASY',moderate:'MODERATE',hard:'HARD',vhard:'VERY HARD'}[d]||d;
+}
+function diff2color(d){
+  return {easy:'#00ffcc',moderate:'#ffaa00',hard:'#ff6644',vhard:'#ff44aa'}[d]||'#fff';
+}
+
+// ═══════════════════════════════════════════════════
+//  GAME TICK
+// ═══════════════════════════════════════════════════
+function gameTick(){
+  if(phase!=='play') return;
+
+  // Thrust
+  let tx=0,ty=0;
+  if(S.fuel>0){
+    if(keys.ArrowRight) tx+=THRUST_MAG;
+    if(keys.ArrowLeft)  tx-=THRUST_MAG;
+    if(keys.ArrowUp)    ty+=THRUST_MAG;
+    if(keys.ArrowDown)  ty-=THRUST_MAG;
+  }
+  if(tx!==0&&ty!==0){tx*=0.7071;ty*=0.7071;}
+  S.tx=tx; S.ty=ty;
+  if(tx!==0||ty!==0) S.fuel=Math.max(0,S.fuel-FUEL_RATE/TICK_HZ);
+
+  // Integrate
+  const h=DT_GAME/4;
+  for(let i=0;i<4;i++){
+    [S.x,S.y,S.vx,S.vy]=rk4(S.x,S.y,S.vx,S.vy,tx,ty,h);
+  }
+  S.t+=DT_GAME;
+
+  // Update moving target
+  if(difficulty!=='easy'){
+    const p=getTargetPos(S.t);
+    TX=p[0]; TY=p[1];
+  }
+
+  // Update zone positions (Very Hard)
+  if(difficulty==='vhard') updateZones(S.t);
+
+  // Zone check
+  let inZone=false;
+  if(difficulty==='hard'||difficulty==='vhard'){
+    inZone=checkZones(S.x,S.y);
+    if(inZone) S.time_in_zone+=DT_GAME;
+  }
+
+  S.score=computeScore();
+
+  // Log
+  currentPlay.ticks.push({
+    t:  +S.t.toFixed(5),
+    tx: +tx.toFixed(4),
+    ty: +ty.toFixed(4),
+    fuel:+S.fuel.toFixed(3),
+    TX: +TX.toFixed(5),
+    TY: +TY.toFixed(5),
+    score:+S.score.toFixed(2),
+    inZone
+  });
+
+  // Trail
+  trail.push([S.x,S.y]);
+  if(trail.length>1000) trail.shift();
+
+  // Win/Lose
+  const dx=TX-S.x, dy=TY-S.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  const dE=Math.sqrt((S.x-EX)**2+S.y**2);
+  const dM=Math.sqrt((S.x-MX)**2+S.y**2);
+
+  if(dist<WIN_R)                         { endGame('win','MISSION SUCCESS'); }
+  else if(dE<EARTH_R)                    { endGame('lose','CRASHED INTO EARTH'); }
+  else if(dM<MOON_R)                     { endGame('lose','CRASHED INTO MOON'); }
+  else if(Math.abs(S.x)>2.5||Math.abs(S.y)>2.2){ endGame('lose','SPACECRAFT LOST'); }
+  else if(S.fuel<=0){
+    const vt=(dx*S.vx+dy*S.vy)/Math.max(dist,1e-9);
+    if(dist>WIN_R*2&&vt<0.002) endGame('lose','FUEL EXHAUSTED');
+  }
+
+  render(inZone);
+  updateHUD(dist,inZone);
+}
+
+// ═══════════════════════════════════════════════════
+//  END GAME
+// ═══════════════════════════════════════════════════
+function endGame(result,msg){
+  phase=result;
+  clearInterval(tickInterval);
+  currentPlay.result     =result;
+  currentPlay.final_time =+S.t.toFixed(5);
+  currentPlay.fuel_left  =+S.fuel.toFixed(3);
+  currentPlay.final_score=+S.score.toFixed(2);
+  currentPlay.time_in_zone=+(S.time_in_zone||0).toFixed(4);
+  currentPlay.zones=exclusionZones.map(z=>({
+    cx:+z.cx.toFixed(4),cy:+z.cy.toFixed(4),
+    rx:+z.rx.toFixed(4),ry:+z.ry.toFixed(4)
+  }));
+  allPlays.push(currentPlay);
+
+  const mb=document.getElementById('msgBox');
+  mb.style.display='block';
+  const sc=`Score: ${S.score.toFixed(1)}`;
+  if(result==='win'){
+    mb.style.cssText='display:block;margin-top:6px;padding:8px;border-radius:3px;'+
+      'font-size:11px;font-weight:bold;text-align:center;line-height:1.7;'+
+      'background:#001a0a;border:1px solid #00ffcc;color:#00ffcc;';
+    mb.innerHTML=`✓ ${msg}<br>Time: ${S.t.toFixed(3)} nd`+
+      `<br>Fuel: ${(S.fuel/FUEL_MAX*100).toFixed(1)}%<br>${sc}`;
+  } else {
+    mb.style.cssText='display:block;margin-top:6px;padding:8px;border-radius:3px;'+
+      'font-size:11px;font-weight:bold;text-align:center;line-height:1.7;'+
+      'background:#1a0000;border:1px solid #ff4444;color:#ff4444;';
+    mb.innerHTML=`✖ ${msg}<br>Time: ${S.t.toFixed(3)} nd<br>${sc}`;
+  }
+  document.getElementById('retryBtn').style.display='block';
+  document.getElementById('dlBtn').style.display='block';
+  render(false);
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════
+function render(inZone){
+  ctx.fillStyle='#000018';
+  ctx.fillRect(0,0,W,H);
+
+  // Stars
+  
+  // Stars — counter-rotating to sell rotating frame illusion
+  const theta = -STAR_ROT_RATE * S.t;
+  const cosT = Math.cos(theta);
+  const sinT = Math.sin(theta);
+
+  for(const [sx,sy,sr,sa] of STARS){
+    // Rotate around canvas center
+    const dx = sx - W/2;
+    const dy = sy - H/2;
+
+    const rx = dx*cosT - dy*sinT;
+    const ry = dx*sinT + dy*cosT;
+
+    const px = W/2 + rx;
+    const py = H/2 + ry;
+
+    ctx.beginPath();
+    ctx.arc(px,py,sr,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,255,255,${sa})`;
+    ctx.fill();
+  }
+
+  // Grid
+  ctx.strokeStyle='rgba(20,40,80,0.4)'; ctx.lineWidth=0.5;
+  for(let gx=-0.6;gx<=1.6;gx+=0.25){
+    const [ppx]=toP(gx,0);
+    ctx.beginPath(); ctx.moveTo(ppx,0); ctx.lineTo(ppx,H); ctx.stroke();
+  }
+  for(let gy=-1;gy<=1;gy+=0.25){
+    const [,ppy]=toP(0,gy);
+    ctx.beginPath(); ctx.moveTo(0,ppy); ctx.lineTo(W,ppy); ctx.stroke();
+  }
+
+  // Exclusion zones (behind everything)
+  if(difficulty==='hard'||difficulty==='vhard') drawExclusionZones();
+
+  // Orbit path
+  if(difficulty!=='easy') drawOrbitPath();
+
+  // Lagrange
+  drawLagrange();
+
+  // Bodies
+  drawBody(EX,EY,15,'#5599ff','#1144cc','#001166','EARTH','#88aaff');
+  drawBody(MX,MY,10,'#ccccbb','#999999','#555544','MOON','#aaaaaa');
+
+  // Barycenter cross
+  const [bcx,bcy]=toP(0,0);
+  ctx.strokeStyle='#334455'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(bcx-5,bcy); ctx.lineTo(bcx+5,bcy); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(bcx,bcy-5); ctx.lineTo(bcx,bcy+5); ctx.stroke();
+
+  // Dashed line to target
+  const [sx,sy]=toP(S.x,S.y);
+  const [ttx,tty]=toP(TX,TY);
+  ctx.save(); ctx.setLineDash([4,9]);
+  ctx.beginPath(); ctx.moveTo(sx,sy); ctx.lineTo(ttx,tty);
+  ctx.strokeStyle='rgba(255,80,80,0.15)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.restore();
+
+  // Trail
+  for(let i=1;i<trail.length;i++){
+    const a=(i/trail.length)*0.8;
+    const [x0,y0]=toP(trail[i-1][0],trail[i-1][1]);
+    const [x1,y1]=toP(trail[i][0],  trail[i][1]);
+    ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1);
+    ctx.strokeStyle=`rgba(0,200,255,${a})`; ctx.lineWidth=1.3; ctx.stroke();
+  }
+
+  // Target
+  drawTarget();
+
+  // Spacecraft glow
+  const thrusting=S.tx!==0||S.ty!==0;
+  if(thrusting){
+    const g=ctx.createRadialGradient(sx,sy,2,sx,sy,22);
+    g.addColorStop(0,'rgba(0,255,180,0.5)');
+    g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(sx,sy,22,0,Math.PI*2);
+    ctx.fillStyle=g; ctx.fill();
+  }
+  // Spacecraft body
+  ctx.beginPath(); ctx.arc(sx,sy,7,0,Math.PI*2);
+  ctx.fillStyle   = inZone?'#ff4444':(thrusting?'#00ffcc':'#44ddff');
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth=1.5;
+  ctx.fill(); ctx.stroke();
+
+  // Thrust arrows
+  if(S.tx!==0||S.ty!==0) drawThrustArrows(sx,sy,S.tx,S.ty);
+}
+
+// ── Orbit path ──
+function drawOrbitPath(){
+  if(orbitTable.length<2) return;
+  ctx.save();
+  ctx.strokeStyle='rgba(255,180,0,0.13)';
+  ctx.lineWidth=1; ctx.setLineDash([3,6]);
+  ctx.beginPath();
+  const [px0,py0]=toP(orbitTable[0][0],orbitTable[0][1]);
+  ctx.moveTo(px0,py0);
+  for(let i=1;i<orbitTable.length;i++){
+    const [ppx,ppy]=toP(orbitTable[i][0],orbitTable[i][1]);
+    ctx.lineTo(ppx,ppy);
+  }
+  ctx.closePath(); ctx.stroke(); ctx.restore();
+}
+
+// ── Exclusion zones ──
+function drawExclusionZones(){
+  const t=Date.now()/400;
+  for(const z of exclusionZones){
+    const [zcx,zcy]=toP(z.cx,z.cy);
+    const zrx=z.rx*SCALE, zry=z.ry*SCALE;
+    const pulse=0.5+0.5*Math.sin(t+z.cx*10);
+    const fillA =z.inside?(0.38+0.22*pulse):0.16;
+    const edgeA =z.inside?(0.85+0.15*pulse):0.40;
+
+    ctx.save();
+    ctx.translate(zcx,zcy);
+    ctx.rotate(z.angle||0);
+
+    // Fill
+    ctx.beginPath(); ctx.ellipse(0,0,zrx,zry,0,0,Math.PI*2);
+    ctx.fillStyle=`rgba(255,40,40,${fillA})`; ctx.fill();
+
+    // Border
+    ctx.setLineDash([5,4]);
+    ctx.strokeStyle=`rgba(255,80,80,${edgeA})`;
+    ctx.lineWidth=z.inside?2.2:1.2;
+    ctx.beginPath(); ctx.ellipse(0,0,zrx,zry,0,0,Math.PI*2);
+    ctx.stroke(); ctx.setLineDash([]);
+
+    // Label
+    ctx.fillStyle=`rgba(255,130,130,${edgeA})`;
+    ctx.font='8px Courier New'; ctx.textAlign='center';
+    ctx.fillText('⚠ SURVEILLANCE',0,-zry-6);
+
+    // Very Hard: draw drift direction indicator
+    if(difficulty==='vhard'){
+      ctx.strokeStyle=`rgba(255,100,100,0.4)`;
+      ctx.lineWidth=1; ctx.setLineDash([2,4]);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(zrx*0.6,0);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+}
+
+// ── Lagrange points ──
+function drawLagrange(){
+  const Lpts=[
+    [L1x,       0,               'L1'],
+    [L2x,       0,               'L2'],
+    [-MU-1.005, 0,               'L3'],
+    [0.5-MU,    Math.sqrt(3)/2,  'L4'],
+    [0.5-MU,   -Math.sqrt(3)/2,  'L5'],
+  ];
+  for(const [lx,ly,lb] of Lpts){
+    const [ppx,ppy]=toP(lx,ly);
+    if(ppx<-20||ppx>W+20||ppy<-20||ppy>H+20) continue;
+    ctx.beginPath(); ctx.arc(ppx,ppy,3.5,0,Math.PI*2);
+    ctx.fillStyle='rgba(140,80,220,0.65)'; ctx.fill();
+    ctx.fillStyle='rgba(190,140,255,0.85)';
+    ctx.font='9px Courier New'; ctx.textAlign='left';
+    ctx.fillText(lb,ppx+6,ppy+3);
+  }
+}
+
+// ── Celestial body ──
+function drawBody(ndx,ndy,r,c0,c1,c2,label,lcol){
+  const [bx,by]=toP(ndx,ndy);
+  const glow=ctx.createRadialGradient(bx,by,r*0.3,bx,by,r*2.8);
+  glow.addColorStop(0,c0+'44'); glow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.beginPath(); ctx.arc(bx,by,r*2.8,0,Math.PI*2);
+  ctx.fillStyle=glow; ctx.fill();
+  const grad=ctx.createRadialGradient(bx-r*.3,by-r*.3,1,bx,by,r);
+  grad.addColorStop(0,c0); grad.addColorStop(0.6,c1); grad.addColorStop(1,c2);
+  ctx.beginPath(); ctx.arc(bx,by,r,0,Math.PI*2);
+  ctx.fillStyle=grad; ctx.fill();
+  ctx.strokeStyle=c1; ctx.lineWidth=1.2; ctx.stroke();
+  ctx.fillStyle=lcol; ctx.font='10px Courier New';
+  ctx.textAlign='center'; ctx.fillText(label,bx,by+r+14);
+}
+
+// ── Target ──
+function drawTarget(){
+  const [ttx,tty]=toP(TX,TY);
+  const pulse=0.5+0.5*Math.sin(Date.now()/500);
+  ctx.beginPath();
+  ctx.arc(ttx,tty,WIN_R*SCALE*(1.15+0.15*pulse),0,Math.PI*2);
+  ctx.strokeStyle=`rgba(255,60,60,${0.15*pulse})`; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath(); ctx.arc(ttx,tty,WIN_R*SCALE,0,Math.PI*2);
+  ctx.strokeStyle=`rgba(255,80,80,${0.35+0.25*pulse})`; ctx.lineWidth=1.5; ctx.stroke();
+  const s=9;
+  ctx.strokeStyle=`rgba(255,80,80,${0.85+0.15*pulse})`; ctx.lineWidth=2.5;
+  ctx.beginPath(); ctx.moveTo(ttx-s,tty-s); ctx.lineTo(ttx+s,tty+s); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(ttx+s,tty-s); ctx.lineTo(ttx-s,tty+s); ctx.stroke();
+  ctx.fillStyle=`rgba(255,130,130,${0.7+0.3*pulse})`;
+  ctx.font='10px Courier New'; ctx.textAlign='center';
+  ctx.fillText('TARGET',ttx,tty-WIN_R*SCALE-7);
+}
+
+// ── Thrust arrows ──
+function drawThrustArrows(sx,sy,tx,ty){
+  ctx.save();
+  ctx.strokeStyle='#ffdd00'; ctx.fillStyle='#ffdd00'; ctx.lineWidth=2.5;
+  if(tx!==0) drawArrow(sx,sy,sx+Math.sign(tx)*ARROW_ND*SCALE,sy);
+  if(ty!==0) drawArrow(sx,sy,sx,sy-Math.sign(ty)*ARROW_ND*SCALE);
+  if(tx!==0&&ty!==0){
+    ctx.strokeStyle='rgba(255,220,0,0.35)'; ctx.lineWidth=1.5;
+    drawArrow(sx,sy,
+      sx+Math.sign(tx)*ARROW_ND*SCALE*0.7071,
+      sy-Math.sign(ty)*ARROW_ND*SCALE*0.7071);
+  }
+  ctx.restore();
+}
+
+function drawArrow(x1,y1,x2,y2){
+  const hl=11,ang=Math.atan2(y2-y1,x2-x1);
+  ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-hl*Math.cos(ang-Math.PI/6),y2-hl*Math.sin(ang-Math.PI/6));
+  ctx.lineTo(x2-hl*Math.cos(ang+Math.PI/6),y2-hl*Math.sin(ang+Math.PI/6));
+  ctx.closePath(); ctx.fill();
+}
+
+// ═══════════════════════════════════════════════════
+//  HUD
+// ═══════════════════════════════════════════════════
+function updateHUD(dist,inZone){
+  const spd=Math.sqrt(S.vx*S.vx+S.vy*S.vy);
+  const fp=Math.max(0,S.fuel/FUEL_MAX*100);
+
+  document.getElementById('hTime').textContent=S.t.toFixed(3);
+  document.getElementById('hSpd').textContent=spd.toFixed(4);
+  document.getElementById('hJac').textContent=jacobi(S.x,S.y,S.vx,S.vy).toFixed(4);
+  document.getElementById('hPos').textContent=`(${S.x.toFixed(3)},${S.y.toFixed(3)})`;
+  document.getElementById('hDist').textContent=dist.toFixed(4)+' nd';
+  document.getElementById('hThr').textContent=`[${S.tx.toFixed(1)},${S.ty.toFixed(1)}]`;
+
+  const ang=Math.atan2(TY-S.y,TX-S.x)*180/Math.PI;
+  const dirs=['→','↗','↑','↖','←','↙','↓','↘'];
+  document.getElementById('hDir').textContent=dirs[Math.round(((ang%360)+360)%360/45)%8];
+
+  const fEl=document.getElementById('hFuel');
+  fEl.textContent=fp.toFixed(1)+'%';
+  fEl.className='val'+(fp<20?' danger':fp<50?' warn':'');
+  const fBar=document.getElementById('fBar');
+  fBar.style.width=fp+'%';
+  fBar.style.background=fp<20?'linear-gradient(90deg,#ff2200,#ff6600)':
+    fp<50?'linear-gradient(90deg,#ffaa00,#ffdd00)':
+    'linear-gradient(90deg,#00ffcc,#0088ff)';
+
+  document.getElementById('dBar').style.width=Math.min(100,(1-dist/1.6)*100)+'%';
+
+  document.getElementById('kU').className='k'+(keys.ArrowUp   ?' on':'');
+  document.getElementById('kD').className='k'+(keys.ArrowDown ?' on':'');
+  document.getElementById('kL').className='k'+(keys.ArrowLeft ?' on':'');
+  document.getElementById('kR').className='k'+(keys.ArrowRight?' on':'');
+
+  const st=document.getElementById('status');
+  const thr=S.tx!==0||S.ty!==0;
+  if(S.fuel<=0)  {st.textContent='NO FUEL';  st.style.color='#ff4444';}
+  else if(thr)   {st.textContent='THRUSTING';st.style.color='#ffdd00';}
+  else           {st.textContent='COASTING'; st.style.color='#557799';}
+
+  const zw=document.getElementById('zoneWarn');
+  zw.style.display=((difficulty==='hard'||difficulty==='vhard')&&inZone)?'block':'none';
+
+  const sc=document.getElementById('scoreDisplay');
+  sc.textContent=`SCORE: ${S.score.toFixed(1)}`;
+  sc.style.color=S.score<0?'#ff4444':S.score>80?'#00ffcc':'#ffdd00';
+}
+
+// ═══════════════════════════════════════════════════
+//  DOWNLOAD LOG
+// ═══════════════════════════════════════════════════
+function downloadLog(){
+  if(allPlays.length===0){alert('No plays recorded yet.');return;}
+  const L=[];
+  L.push('CISLUNAR DYNAMICS GAME — FULL SESSION LOG');
+  L.push('Generated : '+new Date().toISOString());
+  L.push('MU='+MU+' THRUST='+THRUST_MAG+' DT='+DT_GAME+' HZ='+TICK_HZ);
+  L.push('');
+  L.push('═'.repeat(72));
+
+  for(const play of allPlays){
+    L.push('');
+    L.push(`PLAY #${play.play}  [${play.difficulty.toUpperCase()}]`);
+    L.push(`  Result      : ${play.result.toUpperCase()}`);
+    L.push(`  Final time  : ${play.final_time} nd`);
+    L.push(`  Fuel left   : ${play.fuel_left}`);
+    L.push(`  Final score : ${play.final_score}`);
+    if(play.difficulty==='hard'||play.difficulty==='vhard'){
+      L.push(`  Time in zone: ${play.time_in_zone} nd`);
+      L.push(`  Zones       : ${JSON.stringify(play.zones)}`);
+    }
+    L.push('');
+    L.push('  TICK LOG:');
+    L.push('  '+['t(nd)','tx','ty','fuel','TX','TY','score','inZone'].map(s=>s.padEnd(11)).join(''));
+    L.push('  '+'-'.repeat(88));
+    for(const tk of play.ticks){
+      L.push('  '+[
+        tk.t.toFixed(5).padEnd(11),
+        tk.tx.toFixed(3).padEnd(11),
+        tk.ty.toFixed(3).padEnd(11),
+        tk.fuel.toFixed(3).padEnd(11),
+        tk.TX.toFixed(5).padEnd(11),
+        tk.TY.toFixed(5).padEnd(11),
+        tk.score.toFixed(2).padEnd(11),
+        String(tk.inZone).padEnd(11)
+      ].join(''));
+    }
+    L.push('');
+    L.push('═'.repeat(72));
+  }
+
+  L.push('');
+  L.push('SESSION SUMMARY');
+  L.push(['Play','Diff','Result','Time','Fuel%','Score'].map(s=>s.padEnd(12)).join(''));
+  L.push('-'.repeat(72));
+  for(const p of allPlays){
+    L.push([
+      String(p.play).padEnd(12),
+      p.difficulty.padEnd(12),
+      p.result.padEnd(12),
+      String(p.final_time).padEnd(12),
+      ((p.fuel_left/FUEL_MAX*100).toFixed(1)+'%').padEnd(12),
+      String(p.final_score)
+    ].join(''));
+  }
+
+  const blob=new Blob([L.join('\n')],{type:'text/plain'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download=`cislunar_log_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ═══════════════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════════════
+window.addEventListener('keydown',e=>{
+  keys[e.key]=true;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+  if(e.key==='r'||e.key==='R') showWelcome();
+});
+window.addEventListener('keyup',e=>{ keys[e.key]=false; });
+
+// ═══════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════
+showWelcome();
+</script>
+</body>
+</html>
